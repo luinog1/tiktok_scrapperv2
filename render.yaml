@@ -1,0 +1,40 @@
+services:
+  # Public API/BFF. The root Dockerfile intentionally contains only this
+  # service; the Next.js UI is deployed separately below.
+  - type: web
+    name: tiktok-scrapperv2-bff
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      # Render injects PORT automatically. Do not hard-code it here.
+      - key: SCRAPE_PROVIDER
+        sync: false
+      - key: MEDIA_PROVIDER
+        value: "off"
+      - key: SERVICE_API_KEY
+        sync: false
+      - key: SCRAPE_DO_TOKEN
+        sync: false
+      - key: APIFY_API_TOKEN
+        sync: false
+      - key: TIKTOK_COOKIE
+        sync: false
+
+  # Next.js UI and its /api/* server-side proxy routes.
+  - type: web
+    name: tiktok-scrapperv2-web
+    runtime: docker
+    rootDir: web
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /
+    envVars:
+      # Set this to the public URL of the BFF service after it is created.
+      - key: BFF_URL
+        sync: false
+      - key: BFF_API_KEY
+        sync: false
+      - key: ALLOW_PROVIDER_OVERRIDE
+        value: "false"

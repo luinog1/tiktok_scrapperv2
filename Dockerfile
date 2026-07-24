@@ -14,5 +14,7 @@ COPY package*.json ./
 RUN npm install --omit=dev --no-audit --no-fund && npm cache clean --force
 COPY --from=build /app/dist ./dist
 USER node
-EXPOSE 3000
+# Render supplies PORT at runtime (10000 by default); the application also
+# keeps 3000 as its local fallback.
+EXPOSE 10000
 CMD ["node", "dist/src/server.js"]

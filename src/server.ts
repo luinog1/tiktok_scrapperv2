@@ -6,7 +6,7 @@ import { CONFIG } from './config.js';
 const app = createApp(CONFIG);
 const server = createServer(app);
 
-server.listen(CONFIG.port, () => {
+server.listen(CONFIG.port, '0.0.0.0', () => {
   console.log(JSON.stringify({
     level: 'info',
     event: 'server_started',

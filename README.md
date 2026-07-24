@@ -238,6 +238,29 @@ Em deploy `scrapedo + MEDIA_PROVIDER=off`, o serviço DouK pode ser removido do
 Compose customizado. O arquivo padrão o mantém porque o modo recomendado é
 `self + douk`.
 
+## Deploy no Render (Docker)
+
+Este repositório tem dois processos públicos: o BFF Express e a interface
+Next.js. O `Dockerfile` da raiz inicia somente o BFF; ele não serve a página
+da UI. Para criar os dois serviços no Render, use o Blueprint
+[`render.yaml`](./render.yaml) em **New > Blueprint**.
+
+Se preferir configurar pelo dashboard, crie dois Web Services Docker:
+
+| Serviço | Root Directory | Dockerfile | Health check |
+| --- | --- | --- | --- |
+| BFF | (raiz do repositório) | `Dockerfile` | `/health` |
+| UI | `web` | `Dockerfile` | `/` |
+
+No serviço da UI, defina `BFF_URL` com a URL pública do serviço BFF e, se
+`SERVICE_API_KEY` estiver configurada, use o mesmo valor em `BFF_API_KEY`.
+O Render injeta `PORT` automaticamente; o `web/Dockerfile` usa esse valor e
+mantém `3001` apenas como fallback local para o Docker Compose.
+
+A URL do serviço BFF não é a página da aplicação: `GET /` retorna
+`{"ok":false,"error":"not_found"}` por design. Abra a URL do serviço
+`tiktok-scrapperv2-web` para acessar a interface.
+
 ## Frontend
 
 ```bash

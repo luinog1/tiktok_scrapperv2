@@ -17,5 +17,9 @@ COPY --from=build /app/package*.json ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/.next ./.next
 USER node
-EXPOSE 3001
-CMD ["npm", "run", "start", "--", "-p", "3001"]
+# Render's default public port. Local Compose still uses the 3001 fallback
+# from the command below; EXPOSE is only image metadata.
+EXPOSE 10000
+# Render supplies PORT at runtime (10000 by default). Keep 3001 as the
+# local/docker-compose fallback while binding on every container interface.
+CMD ["sh", "-c", "npm run start -- -p ${PORT:-3001} -H 0.0.0.0"]
