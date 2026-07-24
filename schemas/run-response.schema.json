@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/schemas/run-response.schema.json",
+  "title": "TikTok Trend Extractor RunResponse",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": ["ok", "total", "top"],
+      "properties": {
+        "ok": { "const": true },
+        "total": { "type": "integer", "minimum": 0 },
+        "source": { "enum": ["search", "hashtag"] },
+        "provider": { "enum": ["self", "scrapedo", "apify", "mock", "gumloop"] },
+        "scrapeMeta": {
+          "type": "object",
+          "properties": {
+            "creditsUsed": { "type": "number", "minimum": 0 },
+            "pagesFetched": { "type": "integer", "minimum": 0 },
+            "requests": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": true
+        },
+        "brRemoved": { "type": "integer", "minimum": 0 },
+        "format": { "enum": ["json", "csv", "both"] },
+        "top": {
+          "type": "array",
+          "maxItems": 50,
+          "items": { "$ref": "#/$defs/post" }
+        }
+      },
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "required": ["ok", "error"],
+      "properties": {
+        "ok": { "const": false },
+        "error": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": true
+    }
+  ],
+  "$defs": {
+    "post": {
+      "type": "object",
+      "required": [
+        "id", "url", "caption", "hashtags", "author", "metrics", "duration",
+        "createTime", "music", "engagementRate", "trendTier"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "url": { "type": "string", "format": "uri" },
+        "caption": { "type": "string" },
+        "hashtags": { "type": "array", "items": { "type": "string" } },
+        "author": {
+          "type": "object",
+          "required": ["username", "nickname", "followers", "verified"],
+          "properties": {
+            "username": { "type": "string" },
+            "nickname": { "type": "string" },
+            "followers": { "type": "number", "minimum": 0 },
+            "verified": { "type": "boolean" },
+            "region": { "type": "string" },
+            "signature": { "type": "string" }
+          },
+          "additionalProperties": true
+        },
+        "metrics": {
+          "type": "object",
+          "required": ["playCount", "diggCount", "shareCount", "commentCount"],
+          "properties": {
+            "playCount": { "type": "number", "minimum": 0 },
+            "diggCount": { "type": "number", "minimum": 0 },
+            "shareCount": { "type": "number", "minimum": 0 },
+            "commentCount": { "type": "number", "minimum": 0 },
+            "bookmarkCount": { "type": "number", "minimum": 0 }
+          },
+          "additionalProperties": false
+        },
+        "duration": { "type": "number", "minimum": 0 },
+        "createTime": { "type": "string", "format": "date-time" },
+        "music": {
+          "type": "object",
+          "required": ["title", "author", "isOriginal"],
+          "properties": {
+            "title": { "type": "string" },
+            "author": { "type": "string" },
+            "isOriginal": { "type": "boolean" }
+          },
+          "additionalProperties": false
+        },
+        "engagementRate": { "type": "number", "minimum": 0 },
+        "trendTier": { "enum": ["VIRAL", "HOT", "RISING", "NORMAL"] },
+        "videoUrl": { "type": "string", "format": "uri" },
+        "coverUrl": { "type": "string", "format": "uri" },
+        "images": { "type": "array", "items": { "type": "string", "format": "uri" } }
+      },
+      "additionalProperties": true
+    }
+  }
+}

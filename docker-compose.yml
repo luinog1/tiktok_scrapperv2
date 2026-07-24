@@ -1,0 +1,41 @@
+services:
+  web:
+    build:
+      context: ./web
+    ports:
+      - "3001:3001"
+    environment:
+      BFF_URL: http://bff:3000
+      BFF_API_KEY: ${SERVICE_API_KEY:-}
+      ALLOW_PROVIDER_OVERRIDE: ${ALLOW_PROVIDER_OVERRIDE:-false}
+    depends_on:
+      - bff
+    restart: unless-stopped
+
+  bff:
+    build: .
+    ports:
+      - "3000:3000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      SCRAPE_PROVIDER: ${SCRAPE_PROVIDER:-self}
+      SCRAPE_SERVICE_URL: http://tiktok-dl:5555
+      MEDIA_SERVICE_URL: http://tiktok-dl:5555
+    depends_on:
+      - tiktok-dl
+    restart: unless-stopped
+
+  # DouK remains a separate GPL-3.0 process. Pin DOUK_IMAGE by digest after
+  # validating the installed API/cookie flow. Port 5555 is not published.
+  tiktok-dl:
+    image: ${DOUK_IMAGE:-joeanamier/tiktok-downloader:latest}
+    expose:
+      - "5555"
+    volumes:
+      - douk_data:/app/Volume
+    restart: unless-stopped
+
+volumes:
+  douk_data:

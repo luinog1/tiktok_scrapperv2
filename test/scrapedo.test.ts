@@ -1,0 +1,70 @@
+import { describe, expect, it, vi } from 'vitest';
+
+import { loadConfig } from '../src/config.js';
+import { mapRawToTikTokPost } from '../src/pipeline/mapper.js';
+import { ScrapeDoClient } from '../src/providers/scrapedo/client.js';
+import { ScrapeDoProvider, parseScrapeDoPage } from '../src/providers/scrapedo/index.js';
+
+const HTML = `<!doctype html><html><body>
+<script id="SIGI_STATE" type="application/json">
+{"ItemModule":{"7123456789012345678":{"id":"7123456789012345678","desc":"Não acredito #receita","author":{"uniqueId":"maria","nickname":"Maria"},"stats":{"playCount":120000,"diggCount":12000,"shareCount":300,"commentCount":200},"video":{"duration":15,"cover":{"urlList":["https://p16.tiktokcdn.com/cover.jpeg"]}},"createTime":1720000000}}}
+</script></body></html>`;
+
+describe('ScrapeDoProvider', () => {
+  it('interpreta estado JSON embutido do TikTok sem DOM externo', () => {
+    const items = parseScrapeDoPage(HTML);
+    expect(items).toHaveLength(1);
+    const post = mapRawToTikTokPost(items[0]);
+    expect(post.id).toBe('7123456789012345678');
+    expect(post.author.username).toBe('maria');
+    expect(post.coverUrl).toContain('tiktokcdn.com');
+  });
+
+  it('aceita a estrutura universal webapp.video-detail', () => {
+    const html = `<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__" type="application/json">${JSON.stringify({
+      __DEFAULT_SCOPE__: {
+        'webapp.video-detail': {
+          itemInfo: { itemStruct: { id: '8123456789012345678', desc: 'Oi', author: { uniqueId: 'ana' } } },
+        },
+      },
+    })}</script>`;
+    const items = parseScrapeDoPage(html);
+    expect(items.some((item) => (item as { id?: string }).id === '8123456789012345678')).toBe(true);
+  });
+
+  it('reconhece JSON-LD VideoObject quando a página não expõe SIGI_STATE', () => {
+    const html = `<script type="application/ld+json">${JSON.stringify({
+      '@type': 'VideoObject',
+      url: 'https://www.tiktok.com/@ana/video/9123456789012345678',
+      name: 'Receita rápida',
+      description: 'Uma receita de hoje',
+      contentUrl: 'https://v16.tiktokcdn.com/video.mp4',
+    })}</script>`;
+    const items = parseScrapeDoPage(html);
+    expect(items).toHaveLength(1);
+    expect(mapRawToTikTokPost(items[0]).id).toBe('9123456789012345678');
+  });
+
+  it('envia parâmetros server-side e registra custo', async () => {
+    const fetchImpl = vi.fn(async () => new Response(HTML, {
+      status: 200,
+      headers: { 'content-type': 'text/html', 'Scrape.do-Request-Cost': '25' },
+    }));
+    const config = loadConfig({
+      SCRAPE_PROVIDER: 'scrapedo',
+      SCRAPE_DO_TOKEN: 'server-secret',
+      SCRAPE_DO_GEO_CODE: 'br',
+      MEDIA_PROVIDER: 'off',
+    });
+    const client = new ScrapeDoClient(config, { fetchImpl: fetchImpl as typeof fetch });
+    const provider = new ScrapeDoProvider(config, { client });
+    const items = await provider.search(['receita fitness'], { max: 10, onlyBrazil: true });
+    expect(items).toHaveLength(1);
+    const calledUrl = new URL(String(fetchImpl.mock.calls[0][0]));
+    expect(calledUrl.searchParams.get('token')).toBe('server-secret');
+    expect(calledUrl.searchParams.get('geoCode')).toBe('br');
+    expect(calledUrl.searchParams.get('render')).toBe('true');
+    expect(calledUrl.searchParams.get('url')).toContain('tiktok.com/search');
+    expect(provider.lastMeta.creditsUsed).toBe(25);
+  });
+});
