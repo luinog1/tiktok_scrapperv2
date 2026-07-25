@@ -1,5 +1,6 @@
 import type { AppConfig } from '../config.js';
 import { AppError } from '../errors.js';
+import { CdnClient } from './cdnClient.js';
 import { DoukClient } from './doukClient.js';
 import type { MediaDownload } from './doukClient.js';
 import type { MediaProvider, ProviderHealth } from '../providers/types.js';
@@ -29,9 +30,23 @@ export class OffMediaProvider implements MediaProvider {
   }
 }
 
+export class CdnMediaProvider implements MediaProvider {
+  readonly name = 'cdn' as const;
+  constructor(private readonly client: CdnClient) {}
+
+  download(webUrl: string, filename?: string): Promise<MediaDownload> {
+    return this.client.download(webUrl, filename);
+  }
+
+  async health(): Promise<ProviderHealth> {
+    return this.client.health();
+  }
+}
+
 export function getMediaProvider(config: AppConfig, client = new DoukClient(config)): MediaProvider {
   if (config.mediaProvider === 'off') return new OffMediaProvider();
   if (config.mediaProvider === 'douk') return new DoukMediaProvider(client);
+  if (config.mediaProvider === 'cdn') return new CdnMediaProvider(new CdnClient(config));
   throw new AppError('invalid_media_provider', `MEDIA_PROVIDER inválido ou não implementado: ${config.mediaProvider}.`, 500);
 }
 

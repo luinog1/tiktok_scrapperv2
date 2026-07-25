@@ -104,14 +104,14 @@ function upstreamMessage(value: unknown, seen = new Set<unknown>()): string {
   return '';
 }
 
-function contentLength(response: Response): number | undefined {
+export function contentLength(response: Response): number | undefined {
   const value = response.headers.get('content-length');
   if (!value) return undefined;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-function limitedBody(body: ReadableStream<Uint8Array>, maximumBytes: number): ReadableStream<Uint8Array> {
+export function limitedBody(body: ReadableStream<Uint8Array>, maximumBytes: number): ReadableStream<Uint8Array> {
   const reader = body.getReader();
   let total = 0;
   return new ReadableStream<Uint8Array>({

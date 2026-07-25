@@ -20,9 +20,10 @@ Gumloop não faz parte do caminho final. O adapter antigo continua no código
 somente para compatibilidade durante a migração e não é necessário para
 instalar, iniciar ou operar os três modos acima.
 
-O download de MP4 é independente do motor de busca: `MEDIA_PROVIDER=douk`
-resolve `post.url` sob demanda através do DouK; `MEDIA_PROVIDER=off` mantém
-apenas o link original.
+O download de MP4 é independente do motor de busca: `MEDIA_PROVIDER=cdn`
+resolve `post.url` no próprio BFF (estilo ssstik.io: resolver tikwm-compatível
+sem marca d'água + fallback da página do vídeo), `MEDIA_PROVIDER=douk` delega
+ao serviço DouK e `MEDIA_PROVIDER=off` mantém apenas o link original.
 
 ## Arquitetura
 
@@ -31,7 +32,7 @@ Browser -> Next.js /api/* -> BFF /run -> ScrapeProvider
                                       -> pipeline único
                                          map -> BR -> minViews -> tiers -> rank
 
-Browser -> Next.js /api/download-media -> BFF -> MediaProvider -> DouK
+Browser -> Next.js /api/download-media -> BFF -> MediaProvider (cdn | douk)
 ```
 
 Os tokens ficam somente no processo server-side. O contrato `RunRequest` /
@@ -347,6 +348,7 @@ SMOKE_KEYWORD='receita fitness' SMOKE_MAX=5 npm run smoke
 | `scrapedo_auth_failed` | token scrape.do recusado |
 | `parse_failed` | página sem vídeos reconhecíveis; `details.attempts` traz o diagnóstico do que o TikTok serviu (verify wall, XHRs, âncoras) |
 | `apify_token_missing` | rollback Apify sem token |
+| `media_unresolvable` | modo `cdn` não conseguiu resolver o vídeo (resolver e página falharam); retry costuma resolver |
 | `media_cookie_expired` / `media_access_denied` | renovar cookie de mídia |
 
 Veja também [`docs/providers.md`](./docs/providers.md) e
@@ -365,6 +367,8 @@ produção (Render), para contexto de sessões futuras.
   autor, data, música e capa. Verificado pela UI com "achadinhos": 60 posts,
   13,2 mi de alcance.
 - Export CSV com dados reais.
+- Download de MP4 sem DouK (`MEDIA_PROVIDER=cdn`): botão nos cards e painel
+  "Baixar vídeo por link" na UI — ver seção abaixo.
 - `parse_failed` honesto com diagnóstico da página em `details.attempts`.
 
 **Causas raiz corrigidas nesta sessão (commits `8692395` → `2bc3af6`):**
@@ -385,30 +389,44 @@ produção (Render), para contexto de sessões futuras.
   testes; cada busca custa ~25 créditos (até ~100 com retries/fallback).
 - ~1 em cada 3 buscas ainda pode falhar por verify wall do TikTok (retry
   resolve). Alavancas: `SCRAPE_DO_CUSTOM_WAIT_MS=10000+` e retry na UI.
-- **Download de MP4 (DouK) não funciona no Render atual** — ver seção abaixo.
-- Modo `cdn` de mídia está declarado no tipo mas não implementado
-  (`src/media/factory.ts` lança `invalid_media_provider`).
 
-## Download de mídia no Render (pendente)
+## Download de mídia (modo `cdn`, sem DouK)
 
-O botão de download do card só renderiza com o toggle "Links de mídia" ligado
-**e** `mediaEnabled` verdadeiro no `/api/health`. Como o `render.yaml` fixa
-`MEDIA_PROVIDER=off` no BFF e não há serviço DouK no Blueprint, o botão não
-aparece — a busca funcionar não muda isso; scraping e mídia são caminhos
-independentes.
+Desde 25/jul/2026 o Render usa `MEDIA_PROVIDER=cdn`: o BFF resolve o MP4 no
+próprio processo, como fazem os sites estilo ssstik.io, sem serviço adicional
+no Blueprint. A cadeia (`src/media/cdnClient.ts`):
 
-Para habilitar:
+1. Links curtos (`vm.`/`vt.tiktok.com`, `/t/`) são expandidos seguindo o
+   redirect (máx. 3 saltos, sempre dentro de `*.tiktok.com`).
+2. Resolver tikwm-compatível (`MEDIA_CDN_RESOLVER_URL`, default
+   `https://www.tikwm.com`): devolve o MP4 **sem marca d'água** (HD quando
+   disponível) hospedado no CDN do TikTok. `off` desativa este passo.
+3. Fallback: a própria página do vídeo — o JSON
+   `__UNIVERSAL_DATA_FOR_REHYDRATION__` expõe `playAddr`/`downloadAddr`, que é
+   baixado com os cookies devolvidos pela página (com marca d'água).
+
+O arquivo é sempre transmitido pelo BFF (allowlist de hosts, limite
+`MEDIA_MAX_BYTES`); nenhuma URL de CDN é aberta diretamente pelo browser. Na
+UI há dois caminhos: o botão de download nos cards (toggle "Links de mídia") e
+o painel "Baixar vídeo por link" na coluna lateral, que aceita qualquer URL de
+vídeo do TikTok colada — ambos aparecem quando `/api/health` reporta mídia
+ativa. O resolver público tem rate limit (~1 req/s); para volume alto,
+hospede um resolver próprio ou use DouK.
+
+### DouK opcional
+
+`MEDIA_PROVIDER=douk` continua suportado para quem já roda o serviço
+(`JoeanAmier/TikTokDownloader`, GPL, processo separado):
 
 | Passo | Onde |
 | --- | --- |
-| Subir o DouK (`JoeanAmier/TikTokDownloader`, GPL, processo separado) acessível pelo BFF | Render private service (plano pago), VPS próprio ou tunnel |
+| Subir o DouK acessível pelo BFF | Render private service (plano pago), VPS próprio ou tunnel |
 | `MEDIA_PROVIDER=douk` e `MEDIA_SERVICE_URL=http://<host-douk>:5555` | env do serviço BFF no Render |
 | Cookie TikTok válido no DouK (sem ele: `media_cookie_expired`) | volume/config do DouK |
-| Ligar o toggle "Links de mídia" | UI, na busca |
 
 Se o DouK ficar exposto publicamente, proteja-o (`MEDIA_API_TOKEN` no BFF) —
-o DouK não tem autenticação própria. O download via DouK não consome créditos
-do scrape.do.
+o DouK não tem autenticação própria. Downloads (cdn ou DouK) não consomem
+créditos do scrape.do.
 
 ## Referências verificadas
 

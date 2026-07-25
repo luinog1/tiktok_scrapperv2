@@ -41,7 +41,7 @@ export interface ScrapeProvider {
 }
 
 export interface MediaProvider {
-  readonly name: 'douk' | 'off';
+  readonly name: 'douk' | 'off' | 'cdn';
   /** Providers may return detailed metadata or a plain Node/Web stream. */
   download(webUrl: string, filename?: string): Promise<MediaDownload | NodeJS.ReadableStream | ReadableStream<Uint8Array>>;
   health?(): Promise<ProviderHealth>;

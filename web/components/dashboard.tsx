@@ -64,6 +64,11 @@ function friendlyError(value: unknown): string {
   if (error === 'parse_failed') return 'A página do TikTok mudou de formato e não pôde ser interpretada.';
   if (error === 'media_cookie_expired' || error === 'media_access_denied') return 'A mídia ficou indisponível; renove o cookie do serviço DouK ou abra o link original.';
   if (error === 'media_auth_failed') return 'O serviço DouK recusou a credencial de mídia configurada.';
+  if (error === 'invalid_tiktok_url') return 'Cole um link válido de vídeo do TikTok (tiktok.com ou vm.tiktok.com).';
+  if (error === 'media_unresolvable' || error === 'media_url_missing') return 'Não foi possível resolver este vídeo agora. Tente novamente em instantes.';
+  if (error === 'media_not_found') return 'Este vídeo não está disponível — pode ter sido removido ou ser privado.';
+  if (error === 'media_too_large') return 'O vídeo excede o limite de tamanho configurado para download.';
+  if (error === 'media_timeout') return 'O download demorou demais. Tente novamente.';
   if (error === 'provider_override_disabled') return 'A troca manual de provider está desativada nesta instalação.';
   if (error === 'invalid_agent_response') return 'O agente retornou um formato inesperado. Tente novamente.';
   if (details && Array.isArray(details)) {
@@ -143,6 +148,7 @@ export function Dashboard() {
   const [healthState, setHealthState] = useState<HealthState>('checking');
   const [downloadingId, setDownloadingId] = useState('');
   const [copiedUrl, setCopiedUrl] = useState('');
+  const [directUrl, setDirectUrl] = useState('');
   const abortRef = useRef<AbortController | null>(null);
   const toastTimerRef = useRef<number | null>(null);
 
@@ -282,6 +288,38 @@ export function Dashboard() {
     }
   };
 
+  const downloadDirect = async (event?: FormEvent<HTMLFormElement>) => {
+    event?.preventDefault();
+    const url = directUrl.trim();
+    if (!url || downloadingId) return;
+    if (!/^https:\/\/([a-z0-9-]+\.)*tiktok\.com\/\S+/iu.test(url)) {
+      showToast('Cole um link válido de vídeo do TikTok (tiktok.com ou vm.tiktok.com).');
+      return;
+    }
+    setDownloadingId('direct-link');
+    try {
+      const id = url.match(/\/(?:video|photo|v)\/(\d{8,})/iu)?.[1];
+      const fallback = `tiktok-${id || 'video'}.mp4`;
+      const result = await fetch('/api/download-media', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, filename: fallback }),
+      });
+      if (!result.ok) {
+        const payload = await parseResponse(result);
+        throw new Error(friendlyError(payload));
+      }
+      const blob = await result.blob();
+      downloadBlob(blob, extractFilename(result.headers.get('content-disposition'), fallback));
+      showToast('Download iniciado.');
+      setDirectUrl('');
+    } catch (downloadError) {
+      showToast(downloadError instanceof Error ? downloadError.message : 'Download indisponível agora.');
+    } finally {
+      setDownloadingId('');
+    }
+  };
+
   const exportCsv = () => {
     if (!posts.length) return;
     const content = isRunSuccess(response) && response.csv ? response.csv : csvFromPosts(posts);
@@ -386,6 +424,27 @@ export function Dashboard() {
             )}
             <p className="privacy-note"><span className="privacy-dot" /> As credenciais ficam no servidor. A busca não espera o download do vídeo.</p>
           </form>
+
+          {mediaEnabled ? (
+            <form className="direct-download" onSubmit={downloadDirect} aria-label="Baixar vídeo por link">
+              <div className="form-section-heading"><span>Baixar vídeo por link</span><Icon name="cloud-download" size={15} /></div>
+              <p className="direct-download__hint">Cole o link de um vídeo do TikTok e receba o MP4 — sem marca d’água quando disponível.</p>
+              <div className="input-wrap input-wrap--large">
+                <Icon name="link" size={16} />
+                <input
+                  value={directUrl}
+                  onChange={(event) => setDirectUrl(event.target.value)}
+                  placeholder="https://www.tiktok.com/@criador/video/..."
+                  autoComplete="off"
+                  inputMode="url"
+                  aria-label="Link do vídeo do TikTok"
+                />
+              </div>
+              <button type="submit" className="direct-download__button" disabled={!directUrl.trim() || Boolean(downloadingId)}>
+                {downloadingId === 'direct-link' ? <><Icon name="loader" size={16} /> Preparando MP4...</> : <><Icon name="cloud-download" size={16} /> Baixar MP4</>}
+              </button>
+            </form>
+          ) : null}
         </aside>
 
         <section className="results-area" aria-live="polite">

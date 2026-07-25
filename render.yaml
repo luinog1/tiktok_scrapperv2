@@ -11,8 +11,9 @@ services:
       # Render injects PORT automatically. Do not hard-code it here.
       - key: SCRAPE_PROVIDER
         sync: false
+      # ssstik-style downloads resolved in-process (no DouK service needed).
       - key: MEDIA_PROVIDER
-        value: "off"
+        value: "cdn"
       - key: SERVICE_API_KEY
         sync: false
       - key: SCRAPE_DO_TOKEN

@@ -82,6 +82,8 @@ export interface AppConfig {
   mediaDownloadEndpoint: string;
   mediaTimeoutMs: number;
   mediaMaxBytes: number;
+  /** tikwm-compatible resolver used by MEDIA_PROVIDER=cdn; empty string disables it (page-only). */
+  mediaCdnResolverUrl: string;
 }
 
 function numberEnv(env: NodeJS.ProcessEnv, key: string, fallback: number): number {
@@ -126,6 +128,13 @@ function endpoint(value: string | undefined, fallback: string): string {
   const result = (value?.trim() || fallback).trim();
   if (/^https?:\/\//iu.test(result)) return result.replace(/\/+$/u, '');
   return result.startsWith('/') ? result : `/${result}`;
+}
+
+function cdnResolverUrl(value: string | undefined): string {
+  const raw = value?.trim();
+  if (raw === undefined || raw === '') return 'https://www.tikwm.com';
+  if (['off', 'none', 'disabled'].includes(raw.toLowerCase())) return '';
+  return normalizeBaseUrl(raw);
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -222,6 +231,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     mediaDownloadEndpoint: endpoint(env.MEDIA_DOWNLOAD_ENDPOINT, '/tiktok/detail'),
     mediaTimeoutMs: positiveEnv(env, 'MEDIA_TIMEOUT_MS', 120_000),
     mediaMaxBytes: positiveEnv(env, 'MEDIA_MAX_BYTES', 100 * 1024 * 1024),
+    mediaCdnResolverUrl: cdnResolverUrl(env.MEDIA_CDN_RESOLVER_URL),
   };
 }
 
@@ -250,5 +260,6 @@ export function scrapeConfigured(config: AppConfig): boolean {
 
 export function mediaConfigured(config: AppConfig): boolean {
   return config.mediaProvider === 'off' ||
+    config.mediaProvider === 'cdn' ||
     (config.mediaProvider === 'douk' && Boolean(config.mediaServiceUrl));
 }

@@ -12,6 +12,7 @@ export type IconName =
   | 'filter'
   | 'hash'
   | 'heart'
+  | 'link'
   | 'loader'
   | 'map-pin'
   | 'play'
@@ -63,6 +64,8 @@ export function Icon({ name, size = 18, strokeWidth = 1.8, ...props }: IconProps
       return <svg {...common}><path d="M10 3 8 21M16 3l-2 18M4 9h16M3 15h16" /></svg>;
     case 'heart':
       return <svg {...common}><path d="M20.8 8.7c0 5.4-8.8 10.3-8.8 10.3S3.2 14.1 3.2 8.7A4.7 4.7 0 0 1 12 6.2a4.7 4.7 0 0 1 8.8 2.5Z" /></svg>;
+    case 'link':
+      return <svg {...common}><path d="M9.5 14.5a4 4 0 0 0 5.7 0l3.3-3.3a4 4 0 0 0-5.7-5.7l-1.5 1.5" /><path d="M14.5 9.5a4 4 0 0 0-5.7 0l-3.3 3.3a4 4 0 0 0 5.7 5.7l1.5-1.5" /></svg>;
     case 'loader':
       return <svg {...common} className={`icon-spin ${props.className || ''}`}><path d="M12 3a9 9 0 1 0 9 9" /></svg>;
     case 'map-pin':
