@@ -40,6 +40,44 @@ export class ScrapeDoClient {
   }
 
   async fetchTarget(targetUrl: string, opts: { onlyBrazil?: boolean; geoCode?: string; render?: boolean; superProxy?: boolean; device?: string; signal?: AbortSignal } = {}): Promise<ScrapeDoFetchResult> {
+    const render = opts.render ?? this.config.scrapeDoRender;
+    const withRetry = async (returnJson: boolean): Promise<ScrapeDoFetchResult> => {
+      try {
+        return await this.fetchOnce(targetUrl, opts, returnJson);
+      } catch (error) {
+        // Proxy rotation on protected domains fails occasionally and is not
+        // charged; a single retry resolves most of those runs.
+        if (error instanceof AppError && error.retryable && !opts.signal?.aborted) {
+          return this.fetchOnce(targetUrl, opts, returnJson);
+        }
+        throw error;
+      }
+    };
+
+    const useReturnJson = render && this.config.scrapeDoReturnJson;
+    const primary = await withRetry(useReturnJson);
+    if (primary.items.length) return primary;
+    // returnJSON captures XHR bodies but not the rendered DOM; when the item
+    // list XHR was not observed, fall back to the plain rendered snapshot.
+    if (useReturnJson) {
+      const fallback = await withRetry(false);
+      if (fallback.items.length) {
+        return {
+          items: fallback.items,
+          meta: {
+            creditsUsed: (primary.meta.creditsUsed ?? 0) + (fallback.meta.creditsUsed ?? 0) || undefined,
+            pagesFetched: (primary.meta.pagesFetched ?? 0) + (fallback.meta.pagesFetched ?? 0),
+            requests: (primary.meta.requests ?? 0) + (fallback.meta.requests ?? 0),
+          },
+        };
+      }
+    }
+    throw new AppError('parse_failed', 'Não foi possível encontrar vídeos na página devolvida pelo scrape.do.', 422, {
+      details: { targetUrl },
+    });
+  }
+
+  private async fetchOnce(targetUrl: string, opts: { onlyBrazil?: boolean; geoCode?: string; render?: boolean; superProxy?: boolean; device?: string; signal?: AbortSignal }, returnJson: boolean): Promise<ScrapeDoFetchResult> {
     if (!this.config.scrapeDoToken) {
       throw new AppError('scrapedo_token_missing', 'SCRAPE_PROVIDER=scrapedo requer SCRAPE_DO_TOKEN.', 500);
     }
@@ -54,7 +92,7 @@ export class ScrapeDoClient {
       if (this.config.scrapeDoCustomWaitMs > 0) query.set('customWait', String(this.config.scrapeDoCustomWaitMs));
       if (this.config.scrapeDoWaitSelector) query.set('waitSelector', this.config.scrapeDoWaitSelector);
       if (this.config.scrapeDoWaitUntil) query.set('waitUntil', this.config.scrapeDoWaitUntil);
-      if (this.config.scrapeDoReturnJson) query.set('returnJSON', 'true');
+      if (returnJson) query.set('returnJSON', 'true');
     }
     // Without a geo pin TikTok routes through arbitrary exit countries and
     // often serves a localized shell without results.
@@ -93,11 +131,6 @@ export class ScrapeDoClient {
         try { payload = JSON.parse(body) as unknown; } catch { /* parser handles text */ }
       }
       const items = parseScrapeDoPage(payload);
-      if (!items.length) {
-        throw new AppError('parse_failed', 'Não foi possível encontrar vídeos na página devolvida pelo scrape.do.', 422, {
-          details: { targetUrl },
-        });
-      }
       const credits = numeric(header(response, 'scrape.do-request-cost')) ??
         numeric(header(response, 'x-scrapedo-request-cost'));
       return {

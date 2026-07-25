@@ -116,6 +116,41 @@ describe('ScrapeDoProvider', () => {
     expect(post.metrics.playCount).toBe(12500);
   });
 
+  it('rejeita o registro da hashtag (challenge) com métricas agregadas', () => {
+    const items = parseScrapeDoPage({
+      challengeInfo: {
+        challenge: { id: '39041892', title: 'receitas', stats: { videoCount: 1690000, viewCount: 51300000000 } },
+      },
+    });
+    expect(items).toHaveLength(0);
+  });
+
+  it('faz fallback para o HTML renderizado quando o returnJSON não traz vídeos', async () => {
+    const envelope = JSON.stringify({
+      networkRequests: [{
+        url: 'https://www.tiktok.com/api/challenge/detail/',
+        content: JSON.stringify({ challengeInfo: { challenge: { id: '39041892', stats: { videoCount: 1, viewCount: 2 } } } }),
+      }],
+    });
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response(envelope, {
+        status: 200,
+        headers: { 'content-type': 'application/json', 'Scrape.do-Request-Cost': '25' },
+      }))
+      .mockResolvedValueOnce(new Response(HTML, {
+        status: 200,
+        headers: { 'content-type': 'text/html', 'Scrape.do-Request-Cost': '25' },
+      }));
+    const config = loadConfig({ SCRAPE_PROVIDER: 'scrapedo', SCRAPE_DO_TOKEN: 'server-secret', MEDIA_PROVIDER: 'off' });
+    const client = new ScrapeDoClient(config, { fetchImpl: fetchImpl as typeof fetch });
+    const result = await client.fetchTarget('https://www.tiktok.com/tag/receitas');
+    expect(result.items).toHaveLength(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(new URL(String(fetchImpl.mock.calls[0][0])).searchParams.get('returnJSON')).toBe('true');
+    expect(new URL(String(fetchImpl.mock.calls[1][0])).searchParams.get('returnJSON')).toBeNull();
+    expect(result.meta.creditsUsed).toBe(50);
+  });
+
   it('envia parâmetros server-side e registra custo', async () => {
     const fetchImpl = vi.fn(async () => new Response(HTML, {
       status: 200,

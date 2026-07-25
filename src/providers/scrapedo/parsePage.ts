@@ -28,6 +28,14 @@ function hasVideoUrlId(value: unknown): boolean {
  */
 function likelyPost(value: unknown): boolean {
   if (!isRecord(value)) return false;
+  // Challenge (hashtag) and user records also carry numeric ids, but their
+  // stats count videos/followers instead of plays on a single post.
+  for (const statsKey of ['stats', 'statistics', 'statsV2', 'stats_v2']) {
+    const stats = value[statsKey];
+    if (isRecord(stats) && ('videoCount' in stats || 'video_count' in stats || 'followerCount' in stats || 'follower_count' in stats)) {
+      return false;
+    }
+  }
   for (const [key, child] of Object.entries(value)) {
     const lower = key.toLowerCase();
     if (ID_KEYS.has(lower) && isVideoId(child)) return true;
