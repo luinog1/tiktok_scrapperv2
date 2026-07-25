@@ -45,7 +45,13 @@ export class ScrapeDoClient {
     }
     const query = new URLSearchParams({ token: this.config.scrapeDoToken, url: targetUrl });
     if (opts.superProxy ?? this.config.scrapeDoSuper) query.set('super', 'true');
-    if (opts.render ?? this.config.scrapeDoRender) query.set('render', 'true');
+    const render = opts.render ?? this.config.scrapeDoRender;
+    if (render) {
+      query.set('render', 'true');
+      if (this.config.scrapeDoCustomWaitMs > 0) query.set('customWait', String(this.config.scrapeDoCustomWaitMs));
+      if (this.config.scrapeDoWaitSelector) query.set('waitSelector', this.config.scrapeDoWaitSelector);
+      if (this.config.scrapeDoWaitUntil) query.set('waitUntil', this.config.scrapeDoWaitUntil);
+    }
     const geoCode = opts.geoCode || (opts.onlyBrazil ? this.config.scrapeDoGeoCode : '');
     if (geoCode) query.set('geoCode', geoCode);
     const device = opts.device || this.config.scrapeDoDevice;

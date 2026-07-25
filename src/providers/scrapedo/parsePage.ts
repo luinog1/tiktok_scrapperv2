@@ -1,9 +1,8 @@
 type UnknownRecord = Record<string, unknown>;
 
-const ARRAY_HINTS = new Set([
-  'items', 'itemlist', 'itemlistelement', 'itemstruct', 'videos', 'results', 'aweme_list',
-  'awemelist', 'search_item_list', 'searchitemlist', 'video_list', 'videolist', 'contents',
-  'data', 'list', 'postlist', 'post_list',
+const ID_KEYS = new Set(['id', 'aweme_id', 'awemeid', 'video_id', 'videoid', 'item_id', 'itemid']);
+const URL_KEYS = new Set([
+  'webvideourl', 'web_video_url', 'share_url', 'shareurl', 'url', 'canonicalurl', 'contenturl', 'embedurl',
 ]);
 
 function isRecord(value: unknown): value is UnknownRecord {
@@ -14,14 +13,30 @@ function text(value: unknown): string {
   return typeof value === 'string' ? value : typeof value === 'number' ? String(value) : '';
 }
 
+function isVideoId(value: unknown): boolean {
+  return /^\d{8,}$/u.test(text(value).trim());
+}
+
+function hasVideoUrlId(value: unknown): boolean {
+  return /\/(?:video|v|photo)\/\d{8,}/iu.test(text(value));
+}
+
+/**
+ * TikTok pages embed app-context state (explore categories, locale lists,
+ * feature flags) whose records also carry an `id` key. A real post must carry
+ * a numeric video id, a canonical /video/<id> URL, or be a JSON-LD VideoObject.
+ */
 function likelyPost(value: unknown): boolean {
   if (!isRecord(value)) return false;
-  const keys = Object.keys(value).map((key) => key.toLowerCase());
-  const hasId = keys.some((key) => ['id', 'aweme_id', 'awemeid', 'video_id', 'videoid', 'item_id', 'itemid'].includes(key));
-  const hasUrl = keys.some((key) => ['webvideourl', 'web_video_url', 'share_url', 'url', 'canonicalurl', 'contenturl', 'embedurl', 'thumbnailurl'].includes(key));
-  const hasContent = keys.some((key) => ['desc', 'caption', 'text', 'description', 'name', 'author', 'author_meta', 'authormeta', 'video', '@type'].includes(key));
+  for (const [key, child] of Object.entries(value)) {
+    const lower = key.toLowerCase();
+    if (ID_KEYS.has(lower) && isVideoId(child)) return true;
+    if (URL_KEYS.has(lower) && hasVideoUrlId(child)) return true;
+  }
   const isVideoObject = text(value['@type']).toLowerCase().includes('video');
-  return hasId || (hasUrl && hasContent) || (isVideoObject && hasContent);
+  if (!isVideoObject) return false;
+  const keys = Object.keys(value).map((key) => key.toLowerCase());
+  return keys.some((key) => ['desc', 'caption', 'text', 'description', 'name', 'author', 'contenturl'].includes(key));
 }
 
 function decodeHtml(value: string): string {
@@ -57,38 +72,26 @@ function tryParseJson(value: string): unknown | undefined {
   return undefined;
 }
 
-function collect(value: unknown, result: unknown[], seen: Set<unknown>, hint = ''): void {
+function collect(value: unknown, result: unknown[], seen: Set<unknown>): void {
   if (value === null || value === undefined || seen.has(value)) return;
   if (typeof value === 'string') {
     const parsed = tryParseJson(value);
-    if (parsed !== undefined) collect(parsed, result, seen, hint);
+    if (parsed !== undefined) collect(parsed, result, seen);
     return;
   }
   if (Array.isArray(value)) {
     seen.add(value);
     for (const item of value) {
-      if (likelyPost(item) || ARRAY_HINTS.has(hint.toLowerCase())) {
-        if (isRecord(item)) result.push(item);
-        else collect(item, result, seen, hint);
-      } else {
-        collect(item, result, seen, hint);
-      }
+      if (likelyPost(item)) result.push(item);
+      else collect(item, result, seen);
     }
     return;
   }
   if (!isRecord(value)) return;
   seen.add(value);
   if (likelyPost(value)) result.push(value);
-  for (const [key, child] of Object.entries(value)) {
-    const lower = key.toLowerCase().replace(/[-_]/gu, '');
-    if (Array.isArray(child) && (ARRAY_HINTS.has(key.toLowerCase()) || ARRAY_HINTS.has(lower))) {
-      for (const item of child) {
-        if (isRecord(item)) result.push(item);
-        else collect(item, result, seen, key);
-      }
-      continue;
-    }
-    collect(child, result, seen, key);
+  for (const child of Object.values(value)) {
+    collect(child, result, seen);
   }
 }
 

@@ -17,8 +17,10 @@ export interface ProcessPayloadOptions {
 
 function validPost(post: TikTokPost): boolean {
   // A provider may omit author metadata; id + canonical URL are sufficient for
-  // the stable UI contract and are safer than silently dropping valid results.
-  return Boolean(post.id && post.url);
+  // the stable UI contract. Embedded app-state junk (nav categories, locales)
+  // carries string ids like "Travel", so require a real TikTok video identity.
+  if (!post.id || !post.url) return false;
+  return /^\d{8,}$/u.test(post.id) || /\/(?:video|v|photo)\/\d{8,}/iu.test(post.url);
 }
 
 function stripMediaIfDisabled(post: TikTokPost, includeMediaLinks: boolean): TikTokPost {

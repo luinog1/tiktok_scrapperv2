@@ -45,6 +45,43 @@ describe('ScrapeDoProvider', () => {
     expect(mapRawToTikTokPost(items[0]).id).toBe('9123456789012345678');
   });
 
+  it('ignora categorias de navegação e locales do estado embutido (regressão CSV "Travel")', () => {
+    const html = `<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__" type="application/json">${JSON.stringify({
+      __DEFAULT_SCOPE__: {
+        'webapp.app-context': {
+          language: 'pt-BR',
+          languageList: [
+            { id: 'ind-ID', label: 'Bahasa Indonesia' },
+            { id: 'pt-BR', label: 'Português (Brasil)' },
+          ],
+        },
+        'webapp.explore-page': {
+          categoryList: [
+            { id: 'Travel', label: 'Travel' },
+            { id: 'Sports', label: 'Sports' },
+            { id: 'Gaming', label: 'Gaming' },
+          ],
+        },
+        'webapp.search-page': {
+          data: [
+            {
+              item: {
+                id: '7300000000000000001',
+                desc: 'Achadinho real #promo',
+                author: { uniqueId: 'lojinha', nickname: 'Lojinha' },
+                stats: { playCount: 50000, diggCount: 4000, shareCount: 100, commentCount: 90 },
+              },
+            },
+          ],
+        },
+      },
+    })}</script>`;
+    const items = parseScrapeDoPage(html);
+    const posts = items.map(mapRawToTikTokPost);
+    expect(posts.some((post) => post.id === '7300000000000000001')).toBe(true);
+    expect(posts.every((post) => /^\d{8,}$/u.test(post.id))).toBe(true);
+  });
+
   it('envia parâmetros server-side e registra custo', async () => {
     const fetchImpl = vi.fn(async () => new Response(HTML, {
       status: 200,
@@ -64,6 +101,7 @@ describe('ScrapeDoProvider', () => {
     expect(calledUrl.searchParams.get('token')).toBe('server-secret');
     expect(calledUrl.searchParams.get('geoCode')).toBe('br');
     expect(calledUrl.searchParams.get('render')).toBe('true');
+    expect(calledUrl.searchParams.get('customWait')).toBe('5000');
     expect(calledUrl.searchParams.get('url')).toContain('tiktok.com/search');
     expect(provider.lastMeta.creditsUsed).toBe(25);
   });

@@ -100,11 +100,19 @@ SCRAPE_DO_SUPER=true
 SCRAPE_DO_RENDER=true
 SCRAPE_DO_GEO_CODE=br
 SCRAPE_DO_DEVICE=mobile
+SCRAPE_DO_CUSTOM_WAIT_MS=5000
 ```
 
 O adapter chama `https://api.scrape.do/?token=...&url=...`, interpreta JSON
 embutido/HTML do TikTok e expõe custo/páginas em `scrapeMeta` quando o header
 upstream estiver disponível. O token nunca aparece na resposta.
+
+O TikTok hidrata os resultados de busca/hashtag depois do DOM inicial; sem uma
+espera, o snapshot renderizado é o shell do explore sem vídeos. Por isso
+`SCRAPE_DO_CUSTOM_WAIT_MS` (default 5000) é enviado como `customWait` quando
+`render=true`. Opcionalmente, `SCRAPE_DO_WAIT_SELECTOR` (CSS) e
+`SCRAPE_DO_WAIT_UNTIL` (`domcontentloaded|networkidle0|networkidle2|load`)
+refinam a espera.
 
 ### Apify rollback
 
