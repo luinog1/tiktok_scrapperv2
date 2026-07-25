@@ -21,6 +21,12 @@ function hasVideoUrlId(value: unknown): boolean {
   return /\/(?:video|v|photo)\/\d{8,}/iu.test(text(value));
 }
 
+const POST_CONTEXT_KEYS = new Set([
+  'desc', 'caption', 'text', 'description', 'video', 'stats', 'statistics',
+  'author', 'authormeta', 'author_meta', 'awemeinfo', 'aweme_info',
+  'itemstruct', 'item_struct', 'createtime', 'create_time',
+]);
+
 /**
  * TikTok pages embed app-context state (explore categories, locale lists,
  * feature flags) whose records also carry an `id` key. A real post must carry
@@ -36,11 +42,17 @@ function likelyPost(value: unknown): boolean {
       return false;
     }
   }
+  let hasNumericId = false;
+  let hasPostContext = false;
   for (const [key, child] of Object.entries(value)) {
     const lower = key.toLowerCase();
-    if (ID_KEYS.has(lower) && isVideoId(child)) return true;
+    if (ID_KEYS.has(lower) && isVideoId(child)) hasNumericId = true;
     if (URL_KEYS.has(lower) && hasVideoUrlId(child)) return true;
+    if (POST_CONTEXT_KEYS.has(lower)) hasPostContext = true;
   }
+  // Music, effect and sticker records also expose numeric ids; a post always
+  // carries caption/stats/author context alongside its id.
+  if (hasNumericId && hasPostContext) return true;
   const isVideoObject = text(value['@type']).toLowerCase().includes('video');
   if (!isVideoObject) return false;
   const keys = Object.keys(value).map((key) => key.toLowerCase());

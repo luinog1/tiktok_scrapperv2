@@ -116,6 +116,21 @@ describe('ScrapeDoProvider', () => {
     expect(post.metrics.playCount).toBe(12500);
   });
 
+  it('rejeita registros de música/efeito que só têm id numérico sem contexto de post', () => {
+    const items = parseScrapeDoPage({
+      musicList: [{
+        id: '7301234567890123456',
+        title: 'som original',
+        authorName: 'KA Baby Kids | Moda infantil',
+        playUrl: 'https://sf16-ies-music.tiktokcdn.com/obj/musically-maliva-obj/1.mp3',
+        duration: 30,
+        original: true,
+      }],
+      stickerList: [{ id: '9901234567890123456', name: 'GRWM' }],
+    });
+    expect(items).toHaveLength(0);
+  });
+
   it('rejeita o registro da hashtag (challenge) com métricas agregadas', () => {
     const items = parseScrapeDoPage({
       challengeInfo: {
