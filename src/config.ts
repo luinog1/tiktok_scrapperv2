@@ -47,6 +47,7 @@ export interface AppConfig {
   scrapeDoCustomWaitMs: number;
   scrapeDoWaitSelector: string;
   scrapeDoWaitUntil: string;
+  scrapeDoBlockResources: boolean;
 
   // Apify rollback adapter.
   apifyApiToken: string;
@@ -170,6 +171,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     scrapeDoCustomWaitMs: Math.min(35_000, Math.max(0, numberEnv(env, 'SCRAPE_DO_CUSTOM_WAIT_MS', 5_000))),
     scrapeDoWaitSelector: env.SCRAPE_DO_WAIT_SELECTOR?.trim() ?? '',
     scrapeDoWaitUntil: oneOf(env.SCRAPE_DO_WAIT_UNTIL?.trim().toLowerCase(), ['domcontentloaded', 'networkidle0', 'networkidle2', 'load', ''] as const, ''),
+    scrapeDoBlockResources: booleanEnv(env, 'SCRAPE_DO_BLOCK_RESOURCES', false),
 
     apifyApiToken: env.APIFY_API_TOKEN?.trim() ?? '',
     apifyBaseUrl: normalizeBaseUrl(env.APIFY_BASE_URL?.trim() || 'https://api.apify.com'),

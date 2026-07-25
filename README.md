@@ -112,7 +112,10 @@ espera, o snapshot renderizado é o shell do explore sem vídeos. Por isso
 `SCRAPE_DO_CUSTOM_WAIT_MS` (default 5000) é enviado como `customWait` quando
 `render=true`. Opcionalmente, `SCRAPE_DO_WAIT_SELECTOR` (CSS) e
 `SCRAPE_DO_WAIT_UNTIL` (`domcontentloaded|networkidle0|networkidle2|load`)
-refinam a espera.
+refinam a espera. `SCRAPE_DO_GEO_CODE` é aplicado a todas as buscas scrape.do
+(sem geo pin o TikTok atende por um país arbitrário e devolve um shell
+localizado sem resultados) e `SCRAPE_DO_BLOCK_RESOURCES=false` mantém CSS/XHR
+habilitados durante a renderização, necessários para a hidratação da lista.
 
 ### Apify rollback
 

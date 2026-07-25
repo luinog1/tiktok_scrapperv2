@@ -48,11 +48,16 @@ export class ScrapeDoClient {
     const render = opts.render ?? this.config.scrapeDoRender;
     if (render) {
       query.set('render', 'true');
+      // scrape.do blocks CSS/images by default under render; TikTok's shell
+      // then never hydrates the item list, so resources stay enabled.
+      if (!this.config.scrapeDoBlockResources) query.set('blockResources', 'false');
       if (this.config.scrapeDoCustomWaitMs > 0) query.set('customWait', String(this.config.scrapeDoCustomWaitMs));
       if (this.config.scrapeDoWaitSelector) query.set('waitSelector', this.config.scrapeDoWaitSelector);
       if (this.config.scrapeDoWaitUntil) query.set('waitUntil', this.config.scrapeDoWaitUntil);
     }
-    const geoCode = opts.geoCode || (opts.onlyBrazil ? this.config.scrapeDoGeoCode : '');
+    // Without a geo pin TikTok routes through arbitrary exit countries and
+    // often serves a localized shell without results.
+    const geoCode = opts.geoCode || this.config.scrapeDoGeoCode;
     if (geoCode) query.set('geoCode', geoCode);
     const device = opts.device || this.config.scrapeDoDevice;
     if (device) query.set('device', device);
