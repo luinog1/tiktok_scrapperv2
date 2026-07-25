@@ -11,6 +11,32 @@ export interface ScrapeDoClientOptions {
 export interface ScrapeDoFetchResult {
   items: unknown[];
   meta: ScrapeMeta;
+  diagnostics?: Record<string, unknown>;
+}
+
+/** Compact shape summary of an unparseable page for parse_failed details. */
+function pageDiagnostics(payload: unknown): Record<string, unknown> {
+  if (typeof payload === 'string') {
+    return {
+      kind: 'html',
+      bytes: payload.length,
+      title: payload.match(/<title[^>]*>([^<]{0,120})/iu)?.[1]?.trim() ?? '',
+      universalData: /UNIVERSAL_DATA/u.test(payload),
+      sigiState: /SIGI_STATE/u.test(payload),
+      videoAnchors: (payload.match(/\/video\/\d{8,}/gu) ?? []).length,
+      verifyWall: /(captcha|verify-page|security-check|tiktok-verify)/iu.test(payload),
+    };
+  }
+  if (payload && typeof payload === 'object') {
+    const record = payload as Record<string, unknown>;
+    const requests = Array.isArray(record.networkRequests) ? record.networkRequests : [];
+    return {
+      kind: 'json',
+      keys: Object.keys(record).slice(0, 15),
+      xhr: requests.slice(0, 15).map((request) => String((request as Record<string, unknown>)?.url ?? '').split('?')[0].slice(0, 110)),
+    };
+  }
+  return { kind: typeof payload };
 }
 
 function header(response: Response, name: string): string | undefined {
@@ -59,8 +85,9 @@ export class ScrapeDoClient {
     if (primary.items.length) return primary;
     // returnJSON captures XHR bodies but not the rendered DOM; when the item
     // list XHR was not observed, fall back to the plain rendered snapshot.
+    let fallback: ScrapeDoFetchResult | undefined;
     if (useReturnJson) {
-      const fallback = await withRetry(false);
+      fallback = await withRetry(false);
       if (fallback.items.length) {
         return {
           items: fallback.items,
@@ -73,7 +100,10 @@ export class ScrapeDoClient {
       }
     }
     throw new AppError('parse_failed', 'Não foi possível encontrar vídeos na página devolvida pelo scrape.do.', 422, {
-      details: { targetUrl },
+      details: {
+        targetUrl,
+        attempts: [primary.diagnostics, fallback?.diagnostics].filter(Boolean),
+      },
     });
   }
 
@@ -140,6 +170,7 @@ export class ScrapeDoClient {
           pagesFetched: 1,
           requests: 1,
         },
+        ...(items.length ? {} : { diagnostics: pageDiagnostics(payload) }),
       };
     } catch (error) {
       if (error instanceof AppError) throw error;
