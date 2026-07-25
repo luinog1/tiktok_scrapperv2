@@ -49,6 +49,7 @@ export interface AppConfig {
   scrapeDoWaitUntil: string;
   scrapeDoBlockResources: boolean;
   scrapeDoReturnJson: boolean;
+  scrapeDoStickySession: boolean;
 
   // Apify rollback adapter.
   apifyApiToken: string;
@@ -169,13 +170,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     scrapeDoMaxPages: Math.min(20, positiveEnv(env, 'SCRAPE_DO_MAX_PAGES', 5)),
     // TikTok hydrates search/tag results after the initial DOM; without a wait
     // the rendered snapshot is the explore shell with no videos.
-    scrapeDoCustomWaitMs: Math.min(35_000, Math.max(0, numberEnv(env, 'SCRAPE_DO_CUSTOM_WAIT_MS', 5_000))),
+    scrapeDoCustomWaitMs: Math.min(35_000, Math.max(0, numberEnv(env, 'SCRAPE_DO_CUSTOM_WAIT_MS', 8_000))),
     scrapeDoWaitSelector: env.SCRAPE_DO_WAIT_SELECTOR?.trim() ?? '',
     scrapeDoWaitUntil: oneOf(env.SCRAPE_DO_WAIT_UNTIL?.trim().toLowerCase(), ['domcontentloaded', 'networkidle0', 'networkidle2', 'load', ''] as const, ''),
     scrapeDoBlockResources: booleanEnv(env, 'SCRAPE_DO_BLOCK_RESOURCES', false),
     // Tag/search metrics only travel in the page's XHR calls; returnJSON makes
     // scrape.do capture those responses alongside the rendered HTML.
     scrapeDoReturnJson: booleanEnv(env, 'SCRAPE_DO_RETURN_JSON', true),
+    // Sticky sessions pin the proxy exit that passed TikTok's risk checks;
+    // the client rotates manually whenever a page comes back without videos.
+    scrapeDoStickySession: booleanEnv(env, 'SCRAPE_DO_STICKY_SESSION', true),
 
     apifyApiToken: env.APIFY_API_TOKEN?.trim() ?? '',
     apifyBaseUrl: normalizeBaseUrl(env.APIFY_BASE_URL?.trim() || 'https://api.apify.com'),

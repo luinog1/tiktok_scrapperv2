@@ -60,9 +60,17 @@ function identity(item: unknown): string {
 
 export class ScrapeDoClient {
   private readonly fetchImpl: typeof fetch;
+  // scrape.do sessions stick to one proxy exit for 5 minutes. A session only
+  // rotates automatically when a request fails; an HTTP 200 with a captcha
+  // shell keeps the burned IP, so rotation is manual on empty parses.
+  private sessionId = Math.floor(Math.random() * 1_000_001);
 
   constructor(private readonly config: AppConfig, options: ScrapeDoClientOptions = {}) {
     this.fetchImpl = options.fetchImpl ?? fetch;
+  }
+
+  private rotateSession(): void {
+    this.sessionId = Math.floor(Math.random() * 1_000_001);
   }
 
   async fetchTarget(targetUrl: string, opts: { onlyBrazil?: boolean; geoCode?: string; render?: boolean; superProxy?: boolean; device?: string; signal?: AbortSignal } = {}): Promise<ScrapeDoFetchResult> {
@@ -74,6 +82,7 @@ export class ScrapeDoClient {
         // Proxy rotation on protected domains fails occasionally and is not
         // charged; a single retry resolves most of those runs.
         if (error instanceof AppError && error.retryable && !opts.signal?.aborted) {
+          this.rotateSession();
           return this.fetchOnce(targetUrl, opts, returnJson);
         }
         throw error;
@@ -83,6 +92,7 @@ export class ScrapeDoClient {
     const useReturnJson = render && this.config.scrapeDoReturnJson;
     const primary = await withRetry(useReturnJson);
     if (primary.items.length) return primary;
+    this.rotateSession();
     // returnJSON captures XHR bodies but not the rendered DOM; when the item
     // list XHR was not observed, fall back to the plain rendered snapshot.
     let fallback: ScrapeDoFetchResult | undefined;
@@ -98,6 +108,7 @@ export class ScrapeDoClient {
           },
         };
       }
+      this.rotateSession();
     }
     throw new AppError('parse_failed', 'Não foi possível encontrar vídeos na página devolvida pelo scrape.do.', 422, {
       details: {
@@ -128,6 +139,7 @@ export class ScrapeDoClient {
     // often serves a localized shell without results.
     const geoCode = opts.geoCode || this.config.scrapeDoGeoCode;
     if (geoCode) query.set('geoCode', geoCode);
+    if (this.config.scrapeDoStickySession) query.set('sessionId', String(this.sessionId));
     const device = opts.device || this.config.scrapeDoDevice;
     if (device) query.set('device', device);
 

@@ -163,6 +163,9 @@ describe('ScrapeDoProvider', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2);
     expect(new URL(String(fetchImpl.mock.calls[0][0])).searchParams.get('returnJSON')).toBe('true');
     expect(new URL(String(fetchImpl.mock.calls[1][0])).searchParams.get('returnJSON')).toBeNull();
+    // A burned session must not stick after a page without videos.
+    expect(new URL(String(fetchImpl.mock.calls[1][0])).searchParams.get('sessionId'))
+      .not.toBe(new URL(String(fetchImpl.mock.calls[0][0])).searchParams.get('sessionId'));
     expect(result.meta.creditsUsed).toBe(50);
   });
 
@@ -185,7 +188,8 @@ describe('ScrapeDoProvider', () => {
     expect(calledUrl.searchParams.get('token')).toBe('server-secret');
     expect(calledUrl.searchParams.get('geoCode')).toBe('br');
     expect(calledUrl.searchParams.get('render')).toBe('true');
-    expect(calledUrl.searchParams.get('customWait')).toBe('5000');
+    expect(calledUrl.searchParams.get('customWait')).toBe('8000');
+    expect(calledUrl.searchParams.get('sessionId')).toMatch(/^\d+$/u);
     expect(calledUrl.searchParams.get('url')).toContain('tiktok.com/search');
     expect(provider.lastMeta.creditsUsed).toBe(25);
   });
