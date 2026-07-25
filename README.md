@@ -100,22 +100,56 @@ SCRAPE_DO_SUPER=true
 SCRAPE_DO_RENDER=true
 SCRAPE_DO_GEO_CODE=br
 SCRAPE_DO_DEVICE=mobile
-SCRAPE_DO_CUSTOM_WAIT_MS=5000
+SCRAPE_DO_CUSTOM_WAIT_MS=8000
+SCRAPE_DO_BLOCK_RESOURCES=false
+SCRAPE_DO_RETURN_JSON=true
+SCRAPE_DO_STICKY_SESSION=true
 ```
 
 O adapter chama `https://api.scrape.do/?token=...&url=...`, interpreta JSON
 embutido/HTML do TikTok e expõe custo/páginas em `scrapeMeta` quando o header
 upstream estiver disponível. O token nunca aparece na resposta.
 
-O TikTok hidrata os resultados de busca/hashtag depois do DOM inicial; sem uma
-espera, o snapshot renderizado é o shell do explore sem vídeos. Por isso
-`SCRAPE_DO_CUSTOM_WAIT_MS` (default 5000) é enviado como `customWait` quando
-`render=true`. Opcionalmente, `SCRAPE_DO_WAIT_SELECTOR` (CSS) e
-`SCRAPE_DO_WAIT_UNTIL` (`domcontentloaded|networkidle0|networkidle2|load`)
-refinam a espera. `SCRAPE_DO_GEO_CODE` é aplicado a todas as buscas scrape.do
-(sem geo pin o TikTok atende por um país arbitrário e devolve um shell
-localizado sem resultados) e `SCRAPE_DO_BLOCK_RESOURCES=false` mantém CSS/XHR
-habilitados durante a renderização, necessários para a hidratação da lista.
+Como o TikTok entrega os dados (verificado em produção, jul/2026):
+
+- As métricas de busca/hashtag **não estão mais no HTML**; chegam por XHR
+  (`api/challenge/item_list`, `api/search/...`) depois da renderização.
+- Por isso o fetch usa `render=true` + `returnJSON=true`: o scrape.do captura
+  as respostas XHR e é delas que saem views, likes, comments, descrição,
+  autor, música e capa.
+- `SCRAPE_DO_CUSTOM_WAIT_MS` (default 8000) dá tempo do XHR disparar; aos 5s
+  só os XHRs de boot da página tinham sido emitidos.
+- `SCRAPE_DO_BLOCK_RESOURCES=false` mantém CSS/recursos ligados — o default do
+  scrape.do bloqueia e a página nunca hidrata a lista.
+- `SCRAPE_DO_GEO_CODE` é aplicado a **todas** as buscas (sem geo pin o proxy
+  sai por país arbitrário e o TikTok devolve um shell localizado sem
+  resultados — foi a origem dos resultados "Travel"/"ind-ID").
+- `SCRAPE_DO_STICKY_SESSION=true` fixa um `sessionId` (5 min) no IP que passou
+  no risk check. O scrape.do só rotaciona sozinho quando o request falha; um
+  HTTP 200 com captcha manteria o IP queimado, então o client rotaciona a
+  sessão manualmente sempre que a página volta sem vídeos.
+- `SCRAPE_DO_WAIT_SELECTOR` (CSS) e `SCRAPE_DO_WAIT_UNTIL`
+  (`domcontentloaded|networkidle0|networkidle2|load`) refinam a espera se
+  necessário.
+
+Cadeia de tentativas por URL (até 4 chamadas): `returnJSON` → retry se falha
+retryable (rotação não cobrada) → snapshot HTML renderizado (âncoras da grade,
+com views do badge) → retry. Só depois disso o erro `parse_failed` é emitido —
+e ele agora inclui `details.attempts` com o diagnóstico do que o TikTok serviu
+(título, presença de `UNIVERSAL_DATA`/`SIGI_STATE`, contagem de âncoras
+`/video/`, indício de verify wall e URLs dos XHR capturados). Esse diagnóstico
+aparece nos logs do Render e na resposta da API.
+
+O parser (`src/providers/scrapedo/parsePage.ts`) rejeita registros que também
+carregam id numérico mas não são posts: categorias/locales do app-context,
+challenge da hashtag (stats com `videoCount`), perfis (`followerCount`) e
+músicas/efeitos (id sem contexto de legenda/stats/autor). Quando o mesmo vídeo
+aparece como âncora pobre e como registro XHR completo, vence o mais rico.
+
+Limitação conhecida: o TikTok desafia parte dos IPs do pool com verify wall.
+Mesmo com a cadeia acima, ~1 em cada 3 buscas pode falhar com `parse_failed`;
+uma nova tentativa em seguida costuma passar (a sessão rotaciona). Alavancas:
+subir `SCRAPE_DO_CUSTOM_WAIT_MS` (10–12s) e retry automático na UI.
 
 ### Apify rollback
 
@@ -311,12 +345,70 @@ SMOKE_KEYWORD='receita fitness' SMOKE_MAX=5 npm run smoke
 | `self_scrape_endpoint_missing` | modo `service` aponta para rota ausente |
 | `scrapedo_token_missing` | provider scrape.do sem token |
 | `scrapedo_auth_failed` | token scrape.do recusado |
-| `parse_failed` | página retornada sem itens reconhecíveis |
+| `parse_failed` | página sem vídeos reconhecíveis; `details.attempts` traz o diagnóstico do que o TikTok serviu (verify wall, XHRs, âncoras) |
 | `apify_token_missing` | rollback Apify sem token |
 | `media_cookie_expired` / `media_access_denied` | renovar cookie de mídia |
 
 Veja também [`docs/providers.md`](./docs/providers.md) e
 [`docs/douk-runbook.md`](./docs/douk-runbook.md).
+
+## Estado operacional (25/jul/2026)
+
+Registro da sessão de depuração que deixou a busca funcionando fim-a-fim em
+produção (Render), para contexto de sessões futuras.
+
+**Funcionando:**
+
+- Busca por keyword e hashtag no frontend
+  (`tiktok-scrapperv2-frontendui.onrender.com`) com metadados completos:
+  legenda, hashtags, views/likes/shares/comments reais, engagement, tier,
+  autor, data, música e capa. Verificado pela UI com "achadinhos": 60 posts,
+  13,2 mi de alcance.
+- Export CSV com dados reais.
+- `parse_failed` honesto com diagnóstico da página em `details.attempts`.
+
+**Causas raiz corrigidas nesta sessão (commits `8692395` → `2bc3af6`):**
+
+1. Parser aceitava qualquer objeto com `id` como post → CSV com "Travel",
+   "Gaming", "ind-ID" (categorias/locales do app-context do TikTok).
+2. Sem `geoCode` fixo, o proxy saía por país arbitrário (shell da Indonésia).
+3. `blockResources` default do scrape.do impedia a hidratação da página.
+4. Métricas vêm de XHR pós-render → captura via `returnJSON=true`.
+5. Challenge da hashtag (51 bi de views agregadas), perfis e músicas/efeitos
+   passavam como vídeos → filtros estruturais no `likelyPost`.
+6. Rotação aleatória de proxy reencontrava IPs queimados → sessão sticky com
+   rotação manual em página vazia.
+
+**Pendente / limitações:**
+
+- Cota do scrape.do esgotada em 25/jul/2026 — aguardar renovação para novos
+  testes; cada busca custa ~25 créditos (até ~100 com retries/fallback).
+- ~1 em cada 3 buscas ainda pode falhar por verify wall do TikTok (retry
+  resolve). Alavancas: `SCRAPE_DO_CUSTOM_WAIT_MS=10000+` e retry na UI.
+- **Download de MP4 (DouK) não funciona no Render atual** — ver seção abaixo.
+- Modo `cdn` de mídia está declarado no tipo mas não implementado
+  (`src/media/factory.ts` lança `invalid_media_provider`).
+
+## Download de mídia no Render (pendente)
+
+O botão de download do card só renderiza com o toggle "Links de mídia" ligado
+**e** `mediaEnabled` verdadeiro no `/api/health`. Como o `render.yaml` fixa
+`MEDIA_PROVIDER=off` no BFF e não há serviço DouK no Blueprint, o botão não
+aparece — a busca funcionar não muda isso; scraping e mídia são caminhos
+independentes.
+
+Para habilitar:
+
+| Passo | Onde |
+| --- | --- |
+| Subir o DouK (`JoeanAmier/TikTokDownloader`, GPL, processo separado) acessível pelo BFF | Render private service (plano pago), VPS próprio ou tunnel |
+| `MEDIA_PROVIDER=douk` e `MEDIA_SERVICE_URL=http://<host-douk>:5555` | env do serviço BFF no Render |
+| Cookie TikTok válido no DouK (sem ele: `media_cookie_expired`) | volume/config do DouK |
+| Ligar o toggle "Links de mídia" | UI, na busca |
+
+Se o DouK ficar exposto publicamente, proteja-o (`MEDIA_API_TOKEN` no BFF) —
+o DouK não tem autenticação própria. O download via DouK não consome créditos
+do scrape.do.
 
 ## Referências verificadas
 
