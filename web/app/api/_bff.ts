@@ -29,7 +29,7 @@ export async function bffUnavailable(error: unknown): Promise<NextResponse> {
   );
 }
 
-export function forwardResponse(upstream: Response, options: { stream?: boolean } = {}): NextResponse {
+export async function forwardResponse(upstream: Response, options: { stream?: boolean } = {}): Promise<NextResponse> {
   const headers = new Headers();
   const passthrough = ['content-type', 'content-disposition', 'content-length', 'content-range', 'accept-ranges', 'x-request-id'];
   passthrough.forEach((name) => {
@@ -40,5 +40,13 @@ export function forwardResponse(upstream: Response, options: { stream?: boolean 
   if (options.stream) {
     return new NextResponse(upstream.body, { status: upstream.status, headers });
   }
-  return new NextResponse(upstream.body, { status: upstream.status, headers });
+
+  // Buffer JSON responses before handing them to Next. The upstream response
+  // may have been compressed by Render; forwarding its content-length while
+  // reusing the decoded fetch body can make the browser receive a truncated
+  // or otherwise invalid JSON document.
+  const body = await upstream.text();
+  headers.delete('content-length');
+  headers.delete('content-encoding');
+  return new NextResponse(body, { status: upstream.status, headers });
 }

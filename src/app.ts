@@ -318,6 +318,7 @@ export function createApp(config: AppConfig, dependencies: AppDependencies = {})
       status,
       code: isJsonSyntaxError ? 'invalid_json' : error instanceof AppError ? error.code : 'internal_error',
       message: error instanceof Error ? error.message : String(error),
+      ...(error instanceof AppError && error.details !== undefined ? { details: error.details } : {}),
     });
     res.setHeader('Cache-Control', 'no-store');
     res.status(status).json(isJsonSyntaxError ? { ok: false, error: 'invalid_json' } : errorResponse(error));

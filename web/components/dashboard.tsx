@@ -46,6 +46,7 @@ function friendlyError(value: unknown): string {
   const record = value as Record<string, unknown>;
   const error = typeof record.error === 'string' ? record.error : '';
   const details = record.details;
+  if (error === 'invalid_response') return 'O BFF devolveu uma resposta inválida. Confira BFF_URL e os logs do serviço backend.';
   if (error === 'bff_unreachable') return 'O motor está indisponível no momento. Confira se o BFF está rodando.';
   if (error === 'unauthorized') return 'A conexão do servidor recusou a chave de acesso.';
   if (error === 'invalid_request') return 'Revise os termos e os filtros da busca.';
@@ -75,14 +76,26 @@ function friendlyError(value: unknown): string {
 }
 
 async function parseResponse(response: Response): Promise<RunResponse> {
+  const contentType = response.headers.get('content-type') || '';
+  const raw = await response.text();
   let payload: unknown;
   try {
-    payload = await response.json();
+    payload = raw ? JSON.parse(raw) as unknown : undefined;
   } catch {
-    return { ok: false, error: response.ok ? 'invalid_response' : `http_${response.status}`, retryable: response.status >= 500 };
+    return {
+      ok: false,
+      error: response.ok ? 'invalid_response' : `http_${response.status}`,
+      details: { status: response.status, contentType, preview: raw.replace(/\s+/gu, ' ').slice(0, 500) },
+      retryable: response.status >= 500,
+    };
   }
   if (payload && typeof payload === 'object' && 'ok' in payload) return payload as RunResponse;
-  return { ok: false, error: response.ok ? 'invalid_response' : `http_${response.status}`, details: payload, retryable: response.status >= 500 };
+  return {
+    ok: false,
+    error: response.ok ? 'invalid_response' : `http_${response.status}`,
+    details: payload ?? { status: response.status, contentType, preview: raw.replace(/\s+/gu, ' ').slice(0, 500) },
+    retryable: response.status >= 500,
+  };
 }
 
 function extractFilename(header: string | null, fallback: string): string {
