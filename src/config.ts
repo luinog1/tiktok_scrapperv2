@@ -48,6 +48,7 @@ export interface AppConfig {
   scrapeDoWaitSelector: string;
   scrapeDoWaitUntil: string;
   scrapeDoBlockResources: boolean;
+  scrapeDoReturnJson: boolean;
 
   // Apify rollback adapter.
   apifyApiToken: string;
@@ -172,6 +173,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     scrapeDoWaitSelector: env.SCRAPE_DO_WAIT_SELECTOR?.trim() ?? '',
     scrapeDoWaitUntil: oneOf(env.SCRAPE_DO_WAIT_UNTIL?.trim().toLowerCase(), ['domcontentloaded', 'networkidle0', 'networkidle2', 'load', ''] as const, ''),
     scrapeDoBlockResources: booleanEnv(env, 'SCRAPE_DO_BLOCK_RESOURCES', false),
+    // Tag/search metrics only travel in the page's XHR calls; returnJSON makes
+    // scrape.do capture those responses alongside the rendered HTML.
+    scrapeDoReturnJson: booleanEnv(env, 'SCRAPE_DO_RETURN_JSON', true),
 
     apifyApiToken: env.APIFY_API_TOKEN?.trim() ?? '',
     apifyBaseUrl: normalizeBaseUrl(env.APIFY_BASE_URL?.trim() || 'https://api.apify.com'),

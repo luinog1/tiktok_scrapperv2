@@ -75,6 +75,12 @@ function tryParseJson(value: string): unknown | undefined {
 function collect(value: unknown, result: unknown[], seen: Set<unknown>): void {
   if (value === null || value === undefined || seen.has(value)) return;
   if (typeof value === 'string') {
+    // returnJSON envelopes embed the rendered HTML as a string property.
+    if (/<script|<a[\s>]/iu.test(value)) {
+      for (const payload of scriptPayloads(value)) collect(payload, result, seen);
+      for (const anchor of anchorFallback(value)) result.push(anchor);
+      return;
+    }
     const parsed = tryParseJson(value);
     if (parsed !== undefined) collect(parsed, result, seen);
     return;
@@ -120,15 +126,32 @@ function anchorFallback(html: string): UnknownRecord[] {
     const id = absolute.match(/\/video\/(\d{8,})/iu)?.[1] || '';
     if (!id || seen.has(id)) continue;
     seen.add(id);
-    const caption = decodeHtml((match[2] || '').replace(/<[^>]+>/gu, ' ')).replace(/\s+/gu, ' ').trim();
-    result.push({ id, webVideoUrl: absolute, text: caption });
+    const inner = decodeHtml((match[2] || '').replace(/<[^>]+>/gu, ' ')).replace(/\s+/gu, ' ').trim();
+    // On grid pages the anchor's only text is the view-count badge (e.g.
+    // "12.5K"); that is a metric, not a caption.
+    const isBareMetric = /^[\d.,]+\s*[kmb]?$/iu.test(inner);
+    result.push({
+      id,
+      webVideoUrl: absolute,
+      text: isBareMetric ? '' : inner,
+      ...(isBareMetric ? { views: inner } : {}),
+    });
   }
   return result;
 }
 
+function richness(value: unknown, depth = 0): number {
+  if (!isRecord(value) || depth > 2) return 0;
+  let score = Object.keys(value).length;
+  for (const key of ['stats', 'statistics', 'author', 'authorMeta', 'video', 'music', 'item', 'itemStruct']) {
+    score += richness(value[key], depth + 1);
+  }
+  return score;
+}
+
 function dedupe(items: unknown[]): unknown[] {
-  const seen = new Set<string>();
-  const output: unknown[] = [];
+  const byKey = new Map<string, unknown>();
+  const keyless: unknown[] = [];
   for (const item of items) {
     if (!isRecord(item)) continue;
     const identity = (value: unknown, depth = 0): string => {
@@ -142,12 +165,17 @@ function dedupe(items: unknown[]): unknown[] {
       }
       return '';
     };
-    const key = identity(item) || JSON.stringify(item);
-    if (key && seen.has(key)) continue;
-    if (key) seen.add(key);
-    output.push(item);
+    const key = identity(item);
+    if (!key) {
+      keyless.push(item);
+      continue;
+    }
+    const existing = byKey.get(key);
+    // The same video can surface both as a bare grid anchor and as a full
+    // XHR/state record; keep whichever carries more metadata.
+    if (existing === undefined || richness(item) > richness(existing)) byKey.set(key, item);
   }
-  return output;
+  return [...byKey.values(), ...keyless];
 }
 
 /**

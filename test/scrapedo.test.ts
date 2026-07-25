@@ -82,6 +82,40 @@ describe('ScrapeDoProvider', () => {
     expect(posts.every((post) => /^\d{8,}$/u.test(post.id))).toBe(true);
   });
 
+  it('extrai métricas das respostas XHR capturadas via returnJSON e mescla com âncoras', () => {
+    const envelope = {
+      content: `<html><body><a href="/@lojinha/video/7300000000000000002">12.5K</a></body></html>`,
+      networkRequests: [
+        { url: 'https://www.tiktok.com/api/challenge/item_list/?challengeID=1', method: 'GET', content: JSON.stringify({
+          itemList: [{
+            id: '7300000000000000002',
+            desc: 'Achadinho com métricas #promo',
+            author: { uniqueId: 'lojinha', nickname: 'Lojinha' },
+            stats: { playCount: 12500, diggCount: 900, shareCount: 30, commentCount: 45 },
+            video: { duration: 21 },
+            createTime: 1721900000,
+          }],
+        }) },
+      ],
+    };
+    const items = parseScrapeDoPage(envelope);
+    const posts = items.map(mapRawToTikTokPost).filter((post) => post.id === '7300000000000000002');
+    expect(posts).toHaveLength(1);
+    expect(posts[0].metrics.playCount).toBe(12500);
+    expect(posts[0].metrics.diggCount).toBe(900);
+    expect(posts[0].caption).toContain('Achadinho');
+    expect(posts[0].author.username).toBe('lojinha');
+  });
+
+  it('usa o badge numérico da âncora como views, não como legenda', () => {
+    const html = `<html><body><a href="/@perfil/video/7300000000000000003"><span>12.5K</span></a></body></html>`;
+    const items = parseScrapeDoPage(html);
+    const post = mapRawToTikTokPost(items[0]);
+    expect(post.id).toBe('7300000000000000003');
+    expect(post.caption).toBe('');
+    expect(post.metrics.playCount).toBe(12500);
+  });
+
   it('envia parâmetros server-side e registra custo', async () => {
     const fetchImpl = vi.fn(async () => new Response(HTML, {
       status: 200,

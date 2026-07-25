@@ -54,6 +54,7 @@ export class ScrapeDoClient {
       if (this.config.scrapeDoCustomWaitMs > 0) query.set('customWait', String(this.config.scrapeDoCustomWaitMs));
       if (this.config.scrapeDoWaitSelector) query.set('waitSelector', this.config.scrapeDoWaitSelector);
       if (this.config.scrapeDoWaitUntil) query.set('waitUntil', this.config.scrapeDoWaitUntil);
+      if (this.config.scrapeDoReturnJson) query.set('returnJSON', 'true');
     }
     // Without a geo pin TikTok routes through arbitrary exit countries and
     // often serves a localized shell without results.
